@@ -1,0 +1,55 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data/jobmonitor.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Profile {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  seniority          String   // junior / mid / senior
+  skills             String   // JSON: [{"name":"SQL","rating":8}, ...]
+  experience         Int      // years
+  targetRoles        String   // JSON: ["Data Analyst", ...]
+  preferredLocations String   // JSON: ["Bogotá", "Remoto"]
+  avoidKeywords      String   // JSON: ["Senior", ...]
+  education          String?
+  cvPath             String?
+  searchMode         String   @default("busqueda_activa")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Vacancy {
+  feedbacks          Feedback[]
+  id                 Int      @id @default(autoincrement())
+  title              String
+  company            String
+  location           String?
+  description        String
+  requirements       String?
+  url                String
+  source             String   @default("mock")
+  salary             String?
+  contractType       String?
+  experienceRequired String?
+  publishedAt        DateTime?
+  skillsExtracted    String?  // JSON stringified array
+  score              Float?
+  compatibility      Float?
+  growth             Float?
+  strategic          Float?
+  createdAt          DateTime @default(now())
+}
+
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  vacancyId Int
+  status    String   @default("PENDING")
+  notes     String?
+  createdAt DateTime @default(now())
+  vacancy   Vacancy  @relation(fields: [vacancyId], references: [id])
+}

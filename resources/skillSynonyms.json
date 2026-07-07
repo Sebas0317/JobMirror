@@ -1,0 +1,8 @@
+{
+  "sql": ["sql", "structured query language"],
+  "power bi": ["power bi", "business intelligence", "bi"],
+  "excel": ["excel", "hoja de cálculo", "spreadsheet"],
+  "python": ["python", "py"],
+  "reporting": ["reporting", "informes", "reportes", "dashboards"],
+  "data analysis": ["analysis", "analizar datos", "data analysis", "data analytics"]
+}

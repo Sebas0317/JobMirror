@@ -1,0 +1,31 @@
+{
+  "computrabajo": {
+    "enabled": true,
+    "city": "bogota-dc",
+    "pages": 3
+  },
+  "elempleo": {
+    "enabled": true,
+    "city": "bogota",
+    "pages": 3
+  },
+  "indeed": {
+    "enabled": false,
+    "city": "Bogota",
+    "keywords": [],
+    "pages": 1,
+    "note": "Bloqueado por Cloudflare anti-bot. Requiere Puppeteer/Playwright."
+  },
+  "linkedin": {
+    "enabled": false,
+    "city": "Bogota",
+    "keywords": ["Data Analyst", "BI Analyst"],
+    "pages": 1
+  },
+  "magneto": {
+    "enabled": true,
+    "city": "Bogota",
+    "keywords": [],
+    "pages": 2
+  }
+}
