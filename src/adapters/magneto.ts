@@ -62,7 +62,11 @@ export class MagnetoAdapter extends BaseAdapter {
 
     if (jsonld) {
       description = jsonld.description || '';
-      datePosted = jsonld.datePosted || undefined;
+      if (jsonld.datePosted) {
+        const [y, m, d] = jsonld.datePosted.split('-').map(Number);
+        const bogotaDate = new Date(y, m - 1, d, 12, 0, 0);
+        if (!isNaN(bogotaDate.getTime())) datePosted = bogotaDate.toISOString();
+      }
       if (!item.company && jsonld.hiringOrganization?.name) {
         return { description, datePosted, company: jsonld.hiringOrganization.name };
       }
@@ -87,7 +91,11 @@ export class MagnetoAdapter extends BaseAdapter {
       const $ = cheerio.load(data);
       const bodyText = $('body').text();
       const pubMatch = bodyText.match(/de publicación\s+(\d{4}-\d{2}-\d{2})/i);
-      if (pubMatch) datePosted = pubMatch[1];
+      if (pubMatch) {
+        const [y, m, d] = pubMatch[1].split('-').map(Number);
+        const bogotaDate = new Date(y, m - 1, d, 12, 0, 0);
+        if (!isNaN(bogotaDate.getTime())) datePosted = bogotaDate.toISOString();
+      }
     }
 
     return { description, datePosted };

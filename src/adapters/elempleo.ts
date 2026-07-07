@@ -45,12 +45,15 @@ export class ElempleoAdapter extends BaseAdapter {
     const $ = cheerio.load(data);
     const bodyText = $('body').text();
 
-    const pubEl = $('.js-publish-date, .publish-date-info').first().text().trim();
+    const pubEl = $('.js-publish-date').first().text().trim();
     const pubMatch = pubEl.match(/publicado\s+(\d+\s+\w+\s+\d{4})/i);
     let datePosted: string | undefined;
     if (pubMatch) {
       const parsed = new Date(pubMatch[1]);
-      if (!isNaN(parsed.getTime())) datePosted = parsed.toISOString();
+      if (!isNaN(parsed.getTime())) {
+        parsed.setHours(12, 0, 0, 0);
+        datePosted = parsed.toISOString();
+      }
     }
 
     const descSelectors = [
