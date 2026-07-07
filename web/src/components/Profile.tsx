@@ -1,115 +1,114 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
 
 export default function Profile() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('/api/profile')
-      .then(res => setProfile(res.data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    axios.get('/api/profile').then(r => { setProfile(r.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-4">Cargando perfil…</div>;
-  if (!profile) return (
-    <div className="p-4">
-      <h2>Sin perfil</h2>
-      <p>Sube un CV desde el CLI: job-monitor profile upload &lt;cv.pdf&gt;</p>
-      <Link to="/" style={{ color: '#2563eb' }}>← Volver</Link>
-    </div>
-  );
+  if (loading) {
+    return <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Cargando...</div>;
+  }
 
-  const skills = profile.skills ?? [];
-  const targetRoles = profile.targetRoles ?? [];
-  const locations = profile.preferredLocations ?? [];
-  const avoid = profile.avoidKeywords ?? [];
-  const searchMode = profile.searchMode ?? 'busqueda_activa';
+  if (!profile) {
+    return (
+      <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+        <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 16 }}>No hay perfil todavía.</p>
+        <a href="/profile/upload" className="btn btn-primary">Subir CV</a>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4" style={{ maxWidth: 700, margin: '0 auto' }}>
-      <Link to="/" style={{ color: '#2563eb', textDecoration: 'none' }}>← Dashboard</Link>
+    <div className="grid-2">
+      {/* Info card */}
+      <div className="card">
+        <div className="card-header">Perfil</div>
+        <div style={{ padding: 20 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{profile.name}</div>
+            <div className="text-sm text-secondary" style={{ marginTop: 2 }}>
+              {profile.seniority} · {profile.experience} años de experiencia
+            </div>
+          </div>
 
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 12 }}>{profile.name}</h2>
-      <p style={{ color: '#666' }}>
-        {profile.seniority} · {profile.experience} años exp.
-      </p>
+          {profile.targetRoles?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="text-sm text-secondary font-semibold mb-2">Roles objetivo</div>
+              <div className="flex flex-wrap gap-1">
+                {profile.targetRoles.map((r: string) => (
+                  <span key={r} className="skill-tag">{r}</span>
+                ))}
+              </div>
+            </div>
+          )}
 
-      <div style={{
-        background: '#f0fdf4',
-        borderRadius: 8,
-        padding: '8px 14px',
-        marginTop: 12,
-        border: '1px solid #bbf7d0',
-        display: 'inline-block',
-        fontSize: 13,
-        fontWeight: 600,
-        color: searchMode === 'busqueda_activa' ? '#0f766e' : '#92400e',
-      }}>
-        {searchMode === 'busqueda_activa' ? '🔍 Búsqueda Activa' : '🎯 Carrera Ideal'}
+          {profile.preferredLocations?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="text-sm text-secondary font-semibold mb-2">Ubicaciones</div>
+              <div className="flex flex-wrap gap-1">
+                {profile.preferredLocations.map((l: string) => (
+                  <span key={l} className="skill-tag">{l}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {profile.avoidKeywords?.length > 0 && (
+            <div>
+              <div className="text-sm text-secondary font-semibold mb-2">Evitar</div>
+              <div className="flex flex-wrap gap-1">
+                {profile.avoidKeywords.map((k: string) => (
+                  <span key={k} style={{ background: 'var(--danger-light)', color: '#dc2626' }} className="skill-tag">{k}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {profile.education && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+              <div className="text-sm text-secondary font-semibold mb-2">Educación</div>
+              <p style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{profile.education}</p>
+            </div>
+          )}
+
+          {profile.searchMode && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+              <span className="badge" style={{ background: 'var(--primary-light)', color: 'var(--primary-dark)' }}>
+                {profile.searchMode === 'busqueda_activa' ? 'Búsqueda Activa' : 'Carrera Ideal'}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {profile.education && (
-        <section style={{ marginTop: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Educación</h3>
-          <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-            {profile.education}
-          </div>
-        </section>
-      )}
-
-      <section style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Skills ({skills.length})</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {skills.sort((a: any, b: any) => b.rating - a.rating).map((s: any) => (
-            <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 140, fontWeight: 500 }}>{s.name}</span>
-              <div style={{
-                flex: 1,
-                height: 10,
-                background: '#e5e7eb',
-                borderRadius: 5,
-                overflow: 'hidden',
-              }}>
-                <div style={{
-                  width: `${(s.rating / 10) * 100}%`,
-                  height: '100%',
-                  background: s.rating >= 7 ? '#22c55e' : s.rating >= 4 ? '#f59e0b' : '#ef4444',
-                  borderRadius: 5,
-                }} />
+      {/* Skills card */}
+      <div className="card">
+        <div className="card-header">Habilidades ({profile.skills?.length ?? 0})</div>
+        <div style={{ padding: 20 }}>
+          {(profile.skills ?? []).map((s: { name: string; rating: number }) => {
+            const pct = (s.rating / 10) * 100;
+            const color = pct >= 80 ? 'var(--success)' : pct >= 60 ? 'var(--warning)' : 'var(--danger)';
+            return (
+              <div key={s.name} style={{ marginBottom: 12 }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</span>
+                  <span className="text-xs text-secondary">{s.rating}/10</span>
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
+                </div>
               </div>
-              <span style={{ fontSize: 12, color: '#666', width: 30, textAlign: 'right' }}>{s.rating}/10</span>
-            </div>
-          ))}
+            );
+          })}
+          {(!profile.skills || profile.skills.length === 0) && (
+            <p className="text-sm text-secondary">No hay habilidades registradas.</p>
+          )}
         </div>
-      </section>
-
-      <section style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Roles Objetivo</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {targetRoles.map((r: string) => (
-            <span key={r} style={{ padding: '4px 10px', background: '#dbeafe', borderRadius: 12, fontSize: 13 }}>
-              {r}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {locations.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Ubicaciones</h3>
-          <p style={{ color: '#666', fontSize: 14 }}>{locations.join(', ')}</p>
-        </section>
-      )}
-
-      {avoid.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Evitar</h3>
-          <p style={{ color: '#ef4444', fontSize: 14 }}>{avoid.join(', ')}</p>
-        </section>
-      )}
+      </div>
     </div>
   );
 }

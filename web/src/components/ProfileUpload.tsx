@@ -25,6 +25,7 @@ export default function ProfileUpload() {
   const navigate = useNavigate();
 
   const handleUpload = async (f: File) => {
+    if (!f.name.endsWith('.pdf')) { setError('Solo archivos PDF'); return; }
     setFile(f);
     setError('');
     setUploading(true);
@@ -45,10 +46,7 @@ export default function ProfileUpload() {
     if (!preview) return;
     setSaving(true);
     try {
-      await axios.post('/api/profile/save', {
-        ...preview,
-        cvPath: filePath,
-      });
+      await axios.post('/api/profile/save', { ...preview, cvPath: filePath });
       navigate('/profile');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Error al guardar');
@@ -58,77 +56,100 @@ export default function ProfileUpload() {
   };
 
   return (
-    <div className="p-4" style={{ maxWidth: 700, margin: '0 auto' }}>
-      <Link to="/" style={{ color: '#2563eb', textDecoration: 'none' }}>← Dashboard</Link>
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 12 }}>Subir CV</h2>
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <Link to="/profile" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 16, color: 'var(--text-secondary)' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Volver al perfil
+      </Link>
+
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Subir CV</h1>
 
       {!preview && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files[0]); }}
-          onClick={() => fileRef.current?.click()}
-          style={{
-            marginTop: 16,
-            border: `2px dashed ${dragOver ? '#2563eb' : '#d1d5db'}`,
-            borderRadius: 12,
-            padding: 48,
-            textAlign: 'center',
-            cursor: 'pointer',
-            background: dragOver ? '#eff6ff' : '#f9fafb',
-            transition: 'all 0.2s',
-          }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf"
-            style={{ display: 'none' }}
-            onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
-          />
-          <div style={{ fontSize: 40, marginBottom: 8 }}>📄</div>
-          <p style={{ fontWeight: 600 }}>Arrastra tu CV aquí o haz clic para seleccionar</p>
-          <p style={{ fontSize: 13, color: '#666' }}>PDF solamente, máximo 10MB</p>
-          {uploading && <p style={{ color: '#2563eb', marginTop: 8 }}>Procesando CV…</p>}
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleUpload(e.dataTransfer.files[0]); }}
+            onClick={() => fileRef.current?.click()}
+            style={{
+              padding: 56,
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: dragOver ? 'var(--primary-light)' : 'var(--surface)',
+              border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
+              transition: 'all .2s',
+            }}
+          >
+            <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
+              onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} />
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={dragOver ? 'var(--primary)' : 'var(--text-secondary)'} strokeWidth="1.5" style={{ marginBottom: 12 }}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            <p style={{ fontSize: 15, fontWeight: 600, color: dragOver ? 'var(--primary)' : 'var(--text)' }}>
+              {dragOver ? 'Suelta tu CV aquí' : 'Arrastra tu CV o haz clic'}
+            </p>
+            <p className="text-xs text-secondary" style={{ marginTop: 4 }}>PDF, máximo 10 MB</p>
+            {uploading && <p style={{ color: 'var(--primary)', marginTop: 12, fontSize: 13 }}>Procesando CV…</p>}
+          </div>
         </div>
       )}
 
-      {error && <p style={{ color: '#ef4444', marginTop: 12 }}>{error}</p>}
+      {error && <div className="card" style={{ padding: '10px 16px', marginTop: 12, background: 'var(--danger-light)', borderColor: 'var(--danger)', fontSize: 13 }}>{error}</div>}
 
       {preview && (
-        <div style={{ marginTop: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Vista previa</h3>
-          <div style={{ background: '#f9fafb', borderRadius: 8, padding: 16 }}>
-            <p><strong>Nombre:</strong> {preview.name}</p>
-            <p><strong>Seniority:</strong> {preview.seniority}</p>
-            <p><strong>Experiencia:</strong> {preview.experience} años</p>
-            <p><strong>Skills:</strong> {preview.skills.length} detectados</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-              {preview.skills.map(s => (
-                <span key={s.name} style={{ padding: '2px 8px', background: '#dbeafe', borderRadius: 10, fontSize: 12 }}>
-                  {s.name} ({s.rating}/10)
-                </span>
-              ))}
+        <div>
+          <div className="card mb-4">
+            <div className="card-header">Vista previa</div>
+            <div style={{ padding: 20 }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{preview.name}</div>
+                <div className="text-sm text-secondary">{preview.seniority} · {preview.experience} años exp.</div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div className="text-sm text-secondary font-semibold mb-2">Habilidades ({preview.skills.length})</div>
+                <div className="flex flex-wrap gap-1">
+                  {preview.skills.map(s => (
+                    <span key={s.name} className="skill-tag">{s.name} ({s.rating}/10)</span>
+                  ))}
+                </div>
+              </div>
+
+              {preview.education && (
+                <div style={{ marginBottom: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <div className="text-sm text-secondary font-semibold mb-2">Educación</div>
+                  <p style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{preview.education}</p>
+                </div>
+              )}
+
+              {preview.targetRoles.length > 0 && (
+                <div style={{ marginBottom: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <div className="text-sm text-secondary font-semibold mb-2">Roles objetivo</div>
+                  <div className="flex flex-wrap gap-1">
+                    {preview.targetRoles.map(r => <span key={r} className="skill-tag">{r}</span>)}
+                  </div>
+                </div>
+              )}
+
+              {preview.avoidKeywords.length > 0 && (
+                <div style={{ paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <div className="text-sm text-secondary font-semibold mb-2">Evitar</div>
+                  <div className="flex flex-wrap gap-1">
+                    {preview.avoidKeywords.map(k => (
+                      <span key={k} style={{ background: 'var(--danger-light)', color: '#dc2626' }} className="skill-tag">{k}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            {preview.education && (
-              <p style={{ marginTop: 8 }}><strong>Educación:</strong><br />{preview.education}</p>
-            )}
-            <p style={{ marginTop: 8 }}><strong>Roles objetivo:</strong> {preview.targetRoles.join(', ')}</p>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={handleSave} disabled={saving} style={{
-              padding: '8px 24px', background: '#2563eb', color: 'white', border: 'none',
-              borderRadius: 6, fontWeight: 600, cursor: 'pointer',
-            }}>
+          <div className="flex gap-2">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Guardando…' : 'Guardar Perfil'}
             </button>
-            <button onClick={() => { setPreview(null); setFile(null); }} style={{
-              padding: '8px 24px', background: '#e5e7eb', border: 'none',
-              borderRadius: 6, fontWeight: 600, cursor: 'pointer',
-            }}>
-              Cancelar
-            </button>
+            <button className="btn" onClick={() => { setPreview(null); setFile(null); }}>Cancelar</button>
           </div>
         </div>
       )}

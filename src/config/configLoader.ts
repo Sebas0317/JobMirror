@@ -25,6 +25,6 @@ export interface Sources {
 }
 
 /** Helper wrapper to load the source configs */
-export async function loadSources(): Promise<Sources> {
-  return loadConfig<Sources>('sources.json');
+export async function loadSources(): Promise<Record<string, any>> {
+  return loadConfig<Record<string, any>>('sources.json');
 }

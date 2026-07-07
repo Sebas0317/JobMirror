@@ -4,11 +4,8 @@ import { Link } from 'react-router-dom';
 import type { Vacancy } from '../models/Vacancy';
 import { classifyMatch, timeAgo, type MatchType } from '../models/types';
 
-function scoreColor(score: number): string {
-  if (score >= 80) return '#22c55e';
-  if (score >= 60) return '#f59e0b';
-  return '#ef4444';
-}
+const MATCH_LABELS: Record<MatchType, string> = { directa: 'Directa', transferible: 'Transferible', baja_relacion: 'Baja' };
+const MATCH_CLASSES: Record<MatchType, string> = { directa: 'badge-directa', transferible: 'badge-transferible', baja_relacion: 'badge-baja' };
 
 export default function Dashboard() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
@@ -23,6 +20,7 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<Set<MatchType>>(new Set(['directa', 'transferible', 'baja_relacion']));
+  const [scanStatus, setScanStatus] = useState<string>('');
 
   const pageSize = 15;
   const pollingRef = useRef<ReturnType<typeof setInterval>>();
@@ -44,15 +42,23 @@ export default function Dashboard() {
     }
   }
 
-  async function triggerScan() {
+  async function doScan() {
+    if (scanning) return;
     setScanning(true);
+    setScanStatus('Escaneando...');
     try {
-      await axios.post('/api/scan');
+      const { data } = await axios.post('/api/scan');
+      if (data.status === 'ok') {
+        setScanStatus(`Completado: ${data.result.total} vacantes`);
+      } else {
+        setScanStatus(data.status);
+      }
       await fetchData();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setScanStatus('Error en scan');
     } finally {
       setScanning(false);
+      setTimeout(() => setScanStatus(''), 4000);
     }
   }
 
@@ -62,228 +68,174 @@ export default function Dashboard() {
     return () => clearInterval(pollingRef.current);
   }, []);
 
-  const sources = ['todas', ...new Set(vacancies.map(v => v.source).filter(Boolean))];
-  const targetRoles: string[] = profile?.targetRoles ?? ['Data Analyst'];
+  // Filter by source first
+  let sourceFiltered = vacancies;
+  if (sourceFilter !== 'todas') {
+    sourceFiltered = vacancies.filter(v => v.source === sourceFilter);
+  }
 
-  const toggleType = (t: MatchType) => {
-    setTypeFilter(prev => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t); else next.add(t);
-      return next;
+  let filtered: Vacancy[];
+  if (viewMode === 'matches') {
+    // Apply type filter and sorting by sortKey/sortAsc
+    const withType = sourceFiltered.filter(v => {
+      const mtype = classifyMatch(v.title, v.description, profile?.targetRoles ?? []);
+      return typeFilter.has(mtype);
     });
+    filtered = [...withType].sort((a, b) => {
+      const aV = a[sortKey] ?? '';
+      const bV = b[sortKey] ?? '';
+      const cmp = typeof aV === 'string' ? aV.localeCompare(bV as string) : (aV as number) - (bV as number);
+      return sortAsc ? cmp : -cmp;
+    });
+  } else {
+    // "latest" view: ignore type filter, sort by publishedAt descending, then createdAt descending
+    filtered = [...sourceFiltered].sort((a, b) => {
+      const aPub = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const bPub = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      if (aPub !== bPub) return bPub - aPub; // descending by published
+      const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bCreated - aCreated; // descending by created
+    });
+  }
+
+  const sources = Array.from(new Set(vacancies.map(v => v.source)));
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const page = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  function toggleSort(key: keyof Vacancy) {
+    if (sortKey === key) setSortAsc(!sortAsc);
+    else { setSortKey(key); setSortAsc(false); }
+  }
+  function sortArrow(key: keyof Vacancy) {
+    if (sortKey !== key) return '';
+    return sortAsc ? ' ▲' : ' ▼';
+  }
+  function toggleType(t: MatchType) {
+    const next = new Set(typeFilter);
+    if (next.has(t)) next.delete(t); else next.add(t);
+    setTypeFilter(next);
     setCurrentPage(1);
-  };
+  }
 
-  let filtered = sourceFilter === 'todas'
-    ? vacancies
-    : vacancies.filter(v => v.source === sourceFilter);
+  function scoreClass(s: number | null | undefined) {
+    if (s == null) return '';
+    if (s >= 70) return 'score-high';
+    if (s >= 50) return 'score-mid';
+    return 'score-low';
+  }
 
-  // Apply matchType filter
-  filtered = filtered.filter(v => typeFilter.has(classifyMatch(v.title, v.description, targetRoles)));
-
-  const sorted = viewMode === 'latest'
-    ? [...filtered].sort((a, b) => {
-        const aTime = new Date(a.publishedAt ?? '').getTime() || -(a.id ?? 0);
-        const bTime = new Date(b.publishedAt ?? '').getTime() || -(b.id ?? 0);
-        return bTime - aTime;
-      })
-    : [...filtered].sort((a, b) => {
-        const aVal = a[sortKey] ?? '';
-        const bVal = b[sortKey] ?? '';
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return sortAsc ? aVal - bVal : bVal - aVal;
-        }
-        const aStr = String(aVal).toLowerCase();
-        const bStr = String(bVal).toLowerCase();
-        return sortAsc ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
-      });
-
-  const startIdx = (currentPage - 1) * pageSize;
-  const paginated = sorted.slice(startIdx, startIdx + pageSize);
-  const totalPages = Math.ceil(sorted.length / pageSize) || 1;
-
-  const handleSort = (key: keyof Vacancy) => {
-    if (viewMode !== 'matches') setViewMode('matches');
-    if (sortKey === key) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortKey(key);
-      setSortAsc(true);
-    }
-    setCurrentPage(1);
-  };
-
-  const switchView = (mode: 'matches' | 'latest') => {
-    setViewMode(mode);
-    setCurrentPage(1);
-  };
-
-  if (loading) return <div className="p-4">Cargando vacantes…</div>;
-
-  const typeColors: Record<string, string> = {
-    directa: '#22c55e',
-    transferible: '#06b6d4',
-    baja_relacion: '#9ca3af',
-  };
+  if (loading) {
+    return <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Cargando...</div>;
+  }
 
   return (
-    <div className="p-4" style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>
-          Job Monitor {profile?.name ? `— ${profile.name}` : ''}
-        </h1>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#666' }}>
-            {profile?.searchMode === 'carrera_ideal' ? '🎯 Carrera Ideal' : '🔍 Búsqueda Activa'}
-          </span>
-          <span style={{ fontSize: 12, color: '#999' }}>
-            {lastUpdate && `⏱ ${lastUpdate}`}
-          </span>
-          <button
-            onClick={() => { setRefreshing(true); fetchData(); }}
-            disabled={refreshing}
-            style={{
-              padding: '4px 10px',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: refreshing ? '#f3f4f6' : '#fff',
-              cursor: refreshing ? 'default' : 'pointer',
-              fontSize: 12,
-              color: '#333',
-            }}
-          >
-            {refreshing ? '⋯' : '↻'}
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <div className="flex items-center gap-3">
+          <h1 style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>Vacantes</h1>
+          {lastUpdate && <span className="text-sm text-secondary">· {lastUpdate}</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="btn btn-sm" onClick={() => { setRefreshing(true); fetchData(); }} disabled={refreshing}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            {refreshing ? '...' : 'Actualizar'}
           </button>
-          <button
-            onClick={triggerScan}
-            disabled={scanning}
-            style={{
-              padding: '4px 10px',
-              border: '1px solid #3b82f6',
-              borderRadius: 4,
-              background: scanning ? '#dbeafe' : '#3b82f6',
-              cursor: scanning ? 'default' : 'pointer',
-              fontSize: 12,
-              color: '#fff',
-              fontWeight: 600,
-            }}
-          >
-            {scanning ? 'Escaneando…' : 'Escanear'}
+          <button className="btn btn-primary btn-sm" onClick={doScan} disabled={scanning}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            {scanning ? 'Escaneando...' : 'Escanear'}
           </button>
-          <Link to="/profile" style={{ color: '#2563eb', textDecoration: 'none', fontSize: 14 }}>Perfil</Link>
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #d1d5db' }}>
-          <button onClick={() => switchView('matches')} style={{
-            padding: '6px 14px', border: 'none', cursor: 'pointer',
-            background: viewMode === 'matches' ? '#3b82f6' : '#fff',
-            color: viewMode === 'matches' ? '#fff' : '#333',
-            fontWeight: 600, fontSize: 13,
-          }}>Top Matches</button>
-          <button onClick={() => switchView('latest')} style={{
-            padding: '6px 14px', border: 'none', cursor: 'pointer',
-            background: viewMode === 'latest' ? '#3b82f6' : '#fff',
-            color: viewMode === 'latest' ? '#fff' : '#333',
-            fontWeight: 600, fontSize: 13,
-          }}>Latest</button>
+      {scanStatus && (
+        <div className="card mb-4" style={{ padding: '10px 16px', fontSize: 13, background: 'var(--primary-light)', borderColor: 'var(--primary)' }}>
+          {scanStatus}
         </div>
+      )}
 
-        <select value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); setCurrentPage(1); }}
-          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13 }}>
-          {sources.map(s => (
-            <option key={s} value={s}>{s === 'todas' ? 'Todas las fuentes' : s}</option>
-          ))}
-        </select>
-
-        {/* MatchType filter */}
-        {(['directa', 'transferible', 'baja_relacion'] as MatchType[]).map(t => (
-          <label key={t} style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-            <input type="checkbox" checked={typeFilter.has(t)} onChange={() => toggleType(t)} />
-            <span style={{ color: typeColors[t], fontWeight: 600 }}>
-              {t === 'directa' ? 'Directa' : t === 'transferible' ? 'Transferible' : 'Baja'}
-            </span>
-          </label>
-        ))}
-
-        <span style={{ fontSize: 13, color: '#666' }}>
-          {sorted.length} vacantes
-        </span>
+      {/* Filters */}
+      <div className="card mb-4" style={{ padding: '12px 16px' }}>
+        <div className="flex items-center gap-4" style={{ flexWrap: 'wrap' }}>
+          <span className="text-sm text-secondary font-medium">Match:</span>
+          <div className="pill-group">
+            {(['directa', 'transferible', 'baja_relacion'] as MatchType[]).map(t => (
+              <span key={t} className={`pill ${typeFilter.has(t) ? 'active' : ''}`} onClick={() => toggleType(t)}>
+                {MATCH_LABELS[t]}
+              </span>
+            ))}
+          </div>
+          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+          <span className="text-sm text-secondary font-medium">Fuente:</span>
+          <select value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); setCurrentPage(1); }}
+            style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 12, background: 'var(--surface)' }}>
+            <option value="todas">Todas</option>
+            {sources.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+          <span className="text-sm text-secondary font-medium">Vista:</span>
+          <div className="pill-group">
+            <span className={`pill ${viewMode === 'matches' ? 'active' : ''}`} onClick={() => { setViewMode('matches'); setCurrentPage(1); }}>Matches</span>
+            <span className={`pill ${viewMode === 'latest' ? 'active' : ''}`} onClick={() => { setViewMode('latest'); setCurrentPage(1); }}>Últimas</span>
+          </div>
+        </div>
       </div>
 
       {/* Table */}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: '#f3f4f6' }}>
-              {[
-                { key: 'publishedAt' as keyof Vacancy, label: 'Fecha' },
-                { key: 'title' as keyof Vacancy, label: 'Vacante' },
-                { key: 'company' as keyof Vacancy, label: 'Empresa' },
-                { key: 'source' as keyof Vacancy, label: 'Fuente' },
-                { key: 'score' as keyof Vacancy, label: 'Score' },
-              ].map(col => (
-                <th key={col.key} onClick={() => handleSort(col.key)} style={{
-                  padding: '8px 10px', textAlign: 'left', cursor: 'pointer',
-                  borderBottom: '2px solid #e5e7eb', userSelect: 'none',
-                }}>
-                  {col.label} {viewMode === 'matches' && sortKey === col.key ? (sortAsc ? '↑' : '↓') : ''}
-                </th>
-              ))}
-              <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>Tipo</th>
-              <th style={{ padding: '8px 10px', textAlign: 'center', borderBottom: '2px solid #e5e7eb' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.map((v) => {
-              const mtype = classifyMatch(v.title, v.description, targetRoles);
-              return (
-                <tr key={v.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#666', fontSize: 13 }}>
-                    {timeAgo(v.publishedAt ?? v.createdAt)}
-                  </td>
-                  <td style={{ padding: '8px 10px', fontWeight: 500 }}>{v.title}</td>
-                  <td style={{ padding: '8px 10px', color: '#666' }}>{v.company || '—'}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 13 }}>{v.source}</td>
-                  <td style={{ padding: '8px 10px', fontWeight: 700, color: scoreColor(v.score ?? 0) }}>
-                    {v.score?.toFixed(0) ?? '—'}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <span style={{
-                      display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-                      fontSize: 11, fontWeight: 600, color: '#fff',
-                      backgroundColor: typeColors[mtype],
-                    }}>
-                      {mtype === 'directa' ? 'Directa' : mtype === 'transferible' ? 'Transferible' : 'Baja'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                    <Link to={`/vacancy/${v.id}`} style={{ color: '#2563eb', textDecoration: 'none', fontSize: 13 }}>
-                      Ver →
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
-        <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1} style={{
-          padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db',
-          background: '#fff', cursor: currentPage === 1 ? 'default' : 'pointer',
-          opacity: currentPage === 1 ? 0.5 : 1,
-        }}>← Anterior</button>
-        <span style={{ fontSize: 13, color: '#666' }}>Página {currentPage} de {totalPages}</span>
-        <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} style={{
-          padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db',
-          background: '#fff', cursor: currentPage === totalPages ? 'default' : 'pointer',
-          opacity: currentPage === totalPages ? 0.5 : 1,
-        }}>Siguiente →</button>
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th onClick={() => toggleSort('score')}>Score{sortArrow('score')}</th>
+                <th onClick={() => toggleSort('title')}>Título{sortArrow('title')}</th>
+                <th onClick={() => toggleSort('company')}>Empresa{sortArrow('company')}</th>
+                <th onClick={() => toggleSort('source')}>Fuente{sortArrow('source')}</th>
+                <th onClick={() => toggleSort('publishedAt')}>Fecha{sortArrow('publishedAt')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {page.map(v => {
+                const mtype = classifyMatch(v.title, v.description, profile?.targetRoles ?? []);
+                const badgeClass = MATCH_CLASSES[mtype];
+                return (
+                  <tr key={v.id}>
+                    <td>
+                      <span className={`badge badge-score font-bold ${scoreClass(v.score)}`}
+                        style={{ background: v.score != null && v.score >= 70 ? 'var(--success-light)' : v.score != null && v.score >= 50 ? 'var(--warning-light)' : 'var(--danger-light)' }}>
+                        {v.score != null ? v.score : '—'}
+                      </span>
+                    </td>
+                    <td>
+                      <Link to={`/vacancy/${v.id}`} style={{ fontWeight: 500, color: 'var(--text)' }}>
+                        <span className="truncate" style={{ maxWidth: 300, display: 'inline-block' }}>{v.title}</span>
+                      </Link>
+                      <div style={{ marginTop: 2 }}>
+                        <span className={`badge ${badgeClass}`}>{MATCH_LABELS[mtype]}</span>
+                      </div>
+                    </td>
+                    <td className="text-secondary">{v.company}</td>
+                    <td><span className="badge" style={{ background: '#f1f5f9', color: 'var(--text-secondary)' }}>{v.source}</span></td>
+                    <td className="text-sm text-secondary" style={{ whiteSpace: 'nowrap' }}>{timeAgo(v.publishedAt ?? v.createdAt)}</td>
+                  </tr>
+                );
+              })}
+              {page.length === 0 && (
+                <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  {vacancies.length === 0 ? 'No hay vacantes. Escanea para obtener resultados.' : 'Ninguna vacante coincide con los filtros.'}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2" style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
+            <button className="btn btn-sm" disabled={currentPage <= 1} onClick={() => setCurrentPage(p => p - 1)}>← Anterior</button>
+            <span className="text-sm text-secondary">Página {currentPage} de {totalPages}</span>
+            <button className="btn btn-sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)}>Siguiente →</button>
+          </div>
+        )}
       </div>
     </div>
   );

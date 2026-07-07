@@ -35,14 +35,20 @@ export async function runPipeline(): Promise<{
 }> {
   const bySource: Record<string, number> = {};
   let errors = 0;
+  let skipped = 0;
 
   try {
     const profile = await loadProfile();
-    const sources = await loadSources();
+    const sourcesRaw = await loadSources(); // includes maxAgeDays, latestCount top-level
+    const maxAgeDays = Number(sourcesRaw.maxAgeDays) ?? 7; // default 7 days
+    const latestCount = Number(sourcesRaw.latestCount) ?? 0; // 0 means no limit
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
+
     const rawVacancies: any[] = [];
 
     for (const adapter of getAllAdapters()) {
-      const cfg = sources[adapter.name];
+      const cfg = sourcesRaw[adapter.name];
       if (cfg?.enabled) {
         try {
           const results = await adapter.run(cfg);
@@ -56,10 +62,32 @@ export async function runPipeline(): Promise<{
       }
     }
 
+    // Apply latestCount limit if configured (>0)
+    if (latestCount && latestCount > 0) {
+      // Sort by publishedAt descending (newest first). Treat missing/invalid as old.
+      rawVacancies.sort((a, b) => {
+        const dateA = a.publishedAt ? new Date(a.publishedAt) : new Date(0);
+        const dateB = b.publishedAt ? new Date(b.publishedAt) : new Date(0);
+        return dateB.getTime() - dateA.getTime();
+      });
+      if (rawVacancies.length > latestCount) {
+        console.log(`  Limitando a las ${latestCount} vacantes más recientes (de ${rawVacancies.length})`);
+        rawVacancies.length = latestCount; // truncate
+      }
+    }
+
     let stored = 0;
     for (const raw of rawVacancies) {
       try {
         const vacancy = normalize(raw);
+        // Filter by date: only store if publishedAt is within maxAgeDays
+        const pubDate = vacancy.publishedAt ? new Date(vacancy.publishedAt) : null;
+        if (pubDate && pubDate < cutoffDate) {
+          // Skip outdated vacancy
+          skipped++;
+          continue;
+        }
+
         const skillText = `${vacancy.description ?? ''} ${vacancy.requirements ?? ''}`;
         const extracted = extractSkills(skillText);
         vacancy.skillsExtracted = JSON.stringify(extracted);
@@ -89,12 +117,13 @@ export async function runPipeline(): Promise<{
         });
         stored++;
       } catch (e) {
-        console.warn('Error storing vacancy:', e);
+        console.warn('Error storing vacancy:', e, { title: raw.title, url: raw.url });
         errors++;
       }
     }
 
     console.log(`\n  Almacenadas: ${stored} vacantes`);
+    console.log(`  Saltadas (antiguas): ${skipped} vacantes`);
     return { total: stored, bySource, errors };
   } catch (err) {
     console.error('Error in pipeline:', err);

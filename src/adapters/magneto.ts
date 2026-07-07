@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { BaseAdapter } from './BaseAdapter.ts';
-import { extractJSONLD } from './utils.ts';
+import { extractJSONLD, parseRelativeDate } from './utils.ts';
 import type { RawVacancy, AdapterConfig, ListingItem } from './types.ts';
 
 interface JobPostingLD {
@@ -38,6 +38,34 @@ export class MagnetoAdapter extends BaseAdapter {
       const companyText = card.find('h3').first().text().trim();
       const salary = card.find('p').first().text().trim();
       const location = card.find('p').eq(1).text().trim();
+      // Try to extract date from a subsequent p element or a specific class
+      let dateText = card.find('p').eq(2).text().trim();
+      // If not found, try common date selectors
+      if (!dateText) {
+        dateText = card.find('.date, .time, [class*="date"], [class*="time"]').first().text().trim();
+      }
+      // Fallback: look for relative time like "hace 2 horas" in the card's text
+      if (!dateText) {
+        const fullText = card.text();
+        const match = fullText.match(/hace\s+\d+\s+(minuto|hora|d[ií]a|semana)/i);
+        if (match) {
+          dateText = match[0];
+        }
+      }
+      let datePosted: string | undefined;
+      if (dateText) {
+        const parsed = parseRelativeDate(dateText);
+        if (parsed) datePosted = parsed;
+        else {
+          // fallback: try to extract ISO date like yyyy-mm-dd
+          const m = dateText.match(/(\d{4})-(\d{2})-(\d{2})/);
+          if (m) {
+            const [y, mth, d] = m.slice(1).map(Number);
+            const date = new Date(y, mth - 1, d, 12, 0, 0);
+            if (!isNaN(date.getTime())) datePosted = date.toISOString();
+          }
+        }
+      }
 
       listings.push({
         title,
@@ -46,6 +74,7 @@ export class MagnetoAdapter extends BaseAdapter {
         location: location || undefined,
         salary: salary || undefined,
         contractType: companyText.split('|')[1]?.trim() || undefined,
+        datePosted,
       });
     });
 
@@ -95,6 +124,16 @@ export class MagnetoAdapter extends BaseAdapter {
         const [y, m, d] = pubMatch[1].split('-').map(Number);
         const bogotaDate = new Date(y, m - 1, d, 12, 0, 0);
         if (!isNaN(bogotaDate.getTime())) datePosted = bogotaDate.toISOString();
+      }
+      // Fallback: try parsing relative date like "hace 2 horas"
+      if (!datePosted) {
+        // Try to find a visible date element first
+        const dateEl = $('.date, .time, [class*="date"], [class*="time"]').first();
+        const dateText = dateEl.text().trim() || bodyText.match(/hace\s+\d+\s+(minuto|hora|d[ií]a|semana)/i)?.[0];
+        if (dateText) {
+          const relative = parseRelativeDate(dateText);
+          if (relative) datePosted = relative;
+        }
       }
     }
 

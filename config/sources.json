@@ -1,4 +1,6 @@
 {
+  "maxAgeDays": 7,
+  "latestCount": 50,
   "computrabajo": {
     "enabled": true,
     "city": "bogota-dc",

@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { BaseAdapter } from './BaseAdapter.ts';
+import { parseRelativeDate } from './utils.ts';
 import type { RawVacancy, AdapterConfig, ListingItem } from './types.ts';
 
 export class ElempleoAdapter extends BaseAdapter {
@@ -54,6 +55,11 @@ export class ElempleoAdapter extends BaseAdapter {
         parsed.setHours(12, 0, 0, 0);
         datePosted = parsed.toISOString();
       }
+    }
+    // Fallback: try parsing relative date like "hace 2 horas"
+    if (!datePosted && pubEl) {
+      const relative = parseRelativeDate(pubEl);
+      if (relative) datePosted = relative;
     }
 
     const descSelectors = [
