@@ -23,15 +23,20 @@ let scanning = false;
 let lastScanResult: { total: number; bySource: Record<string, number>; errors: number } | null = null;
 
 app.get('/api/profile', async (req, res) => {
-  const profile = await prisma.profile.findFirst();
-  if (!profile) return res.json(null);
-  res.json({
-    ...profile,
-    skills: JSON.parse(profile.skills),
-    targetRoles: JSON.parse(profile.targetRoles || '[]'),
-    preferredLocations: JSON.parse(profile.preferredLocations || '[]'),
-    avoidKeywords: JSON.parse(profile.avoidKeywords || '[]'),
-  });
+  try {
+    const profile = await prisma.profile.findFirst();
+    if (!profile) return res.json(null);
+    res.json({
+      ...profile,
+      skills: JSON.parse(profile.skills || '[]'),
+      targetRoles: JSON.parse(profile.targetRoles || '[]'),
+      preferredLocations: JSON.parse(profile.preferredLocations || '[]'),
+      avoidKeywords: JSON.parse(profile.avoidKeywords || '[]'),
+    });
+  } catch (e) {
+    console.error('[profile]', e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 app.post('/api/profile/upload', upload.single('cv'), async (req, res) => {
@@ -85,10 +90,15 @@ app.post('/api/profile/save', async (req, res) => {
 });
 
 app.get('/api/vacancies', async (req, res) => {
-  const vacancies = await prisma.vacancy.findMany({
-    orderBy: { score: 'desc' },
-  });
-  res.json(vacancies);
+  try {
+    const vacancies = await prisma.vacancy.findMany({
+      orderBy: { score: 'desc' },
+    });
+    res.json(vacancies);
+  } catch (e) {
+    console.error('[vacancies]', e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 app.get('/api/vacancies/:id', async (req, res) => {
